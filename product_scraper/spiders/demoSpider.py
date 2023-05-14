@@ -2,6 +2,9 @@ import json
 import scrapy
 from urllib.parse import urljoin
 import re
+import mysql.connector
+
+
 
 class AmazonSearchProductSpider(scrapy.Spider):
     name = "amazon_search_product"
@@ -21,10 +24,15 @@ class AmazonSearchProductSpider(scrapy.Spider):
     }
 
     def start_requests(self):
-            keyword_list = ['Camera']
+
+        if self.mode == "discover":
+            keyword_list = ['laptops']
             for keyword in keyword_list:
                 amazon_search_url = f'https://www.amazon.com/s?k={keyword}&page=1'
                 yield scrapy.Request(url=amazon_search_url, callback=self.discover_product_urls, meta={'keyword': keyword, 'page': 1}, headers=self.HEADERS)
+        elif self.mode == "audit":
+            for urls in self.getUrlList():
+                yield scrapy.Request(url=urls, callback=self.parse_product_data, headers=self.HEADERS)
 
     def discover_product_urls(self, response):
         page = response.meta['page']
@@ -48,21 +56,37 @@ class AmazonSearchProductSpider(scrapy.Spider):
                 amazon_search_url = f'https://www.amazon.com/s?k={keyword}&page={page_num}'
                 yield scrapy.Request(url=amazon_search_url, callback=self.discover_product_urls, meta={'keyword': keyword, 'page': page_num})
 
-
     def parse_product_data(self, response):
-        image_data = json.loads(re.findall(r"colorImages':.*'initial':\s*(\[.+?\])},\n", response.text)[0])
-        variant_data = re.findall(r'dimensionValuesDisplayData"\s*:\s* ({.+?}),\n', response.text)
-        feature_bullets = [bullet.strip() for bullet in response.css("#feature-bullets li ::text").getall()]
         price = response.css('.a-offscreen ::text').get("")
+        asin = "N/A" if self.mode == "audit" else response.url.split("/")[5]
+        name = response.css("#productTitle::text").get("").strip()
+        
         if not price:
             price = response.css('.a-price span[aria-hidden="true"] ::text').get("")
+
         yield {
-            "name": response.css("#productTitle::text").get("").strip(),
+            "name": name,
             "price": price,
-            "stars": response.css("i[data-hook=average-star-rating] ::text").get("").strip(),
-            "rating_count": response.css("div[data-hook=total-review-count] ::text").get("").strip(),
-            "feature_bullets": feature_bullets,
-            "images": image_data,
-            "variant_data": variant_data,
+            "ASIN": asin
         }
+
+        if self.mode != "audit":
+            mydb = mysql.connector.connect(
+                host="localhost",
+                user="root",
+                password="password",
+                database="flipper"
+            )
+
+            mycursor = mydb.cursor()
+
+            sql = "INSERT INTO awslistings (asin, price, name) VALUES (%s, %s, %s)"
+            val = (asin, price, name)
+            mycursor.execute(sql, val)
+            mydb.commit()
+            mydb.close()
+
+            
  
+    def getUrlList(self):
+        return ["http://www.amazon.com/dp/B07XKXQL79", "http://www.amazon.com/dp/B0B647KQFK", "http://www.amazon.com/dp/B009SB0RJG", "http://www.amazon.com/dp/B07SY773GF"]
