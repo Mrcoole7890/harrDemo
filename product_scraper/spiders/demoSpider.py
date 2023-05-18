@@ -58,11 +58,14 @@ class AmazonSearchProductSpider(scrapy.Spider):
 
     def parse_product_data(self, response):
         price = response.css('.a-offscreen ::text').get("")
-        asin = "N/A" if self.mode == "audit" else response.url.split("/")[5]
+        asin = response.url.split("/")[4] if self.mode == "audit" else response.url.split("/")[5]
         name = response.css("#productTitle::text").get("").strip()
         
         if not price:
             price = response.css('.a-price span[aria-hidden="true"] ::text').get("")
+            if not price:
+                price = response.css('.a-offscreen')
+
 
         yield {
             "name": name,
@@ -85,8 +88,57 @@ class AmazonSearchProductSpider(scrapy.Spider):
             mycursor.execute(sql, val)
             mydb.commit()
             mydb.close()
+        else:
+            mydb = mysql.connector.connect(
+                host="localhost",
+                user="root",
+                password="password",
+                database="flipper"
+            )
 
+            mycursor = mydb.cursor()
+
+            mycursor.execute("SELECT asin FROM awslistings WHERE asin='{}'".format(asin))
+
+            asinFromDB = mycursor.fetchone()
+            if asinFromDB == None:
+                print("AHHHHHHHHHHHHHHHHHHH {} is not found".format(asin))
+                return
             
- 
+            mycursor.execute("SELECT price FROM awslistings WHERE asin='{}'".format(asin))
+
+            priceFromDB = mycursor.fetchone()
+            if priceFromDB == None:
+                print("AHHHHHHHHHHHHHHHHHHH {} is not found".format(asin))
+                return
+
+            print(price)
+
+            if float(priceFromDB[0][1:]) != float(price[1:]):
+                print("\n\n\n\n\n\n\n {} : {} \n\n\n\n\n\n\n".format(price, priceFromDB[0]))
+            
+            mydb.close()
+            
+            
+    #"http://www.amazon.com/dp/B07XKXQL79"
     def getUrlList(self):
-        return ["http://www.amazon.com/dp/B07XKXQL79", "http://www.amazon.com/dp/B0B647KQFK", "http://www.amazon.com/dp/B009SB0RJG", "http://www.amazon.com/dp/B07SY773GF"]
+        mydb = mysql.connector.connect(
+            host="localhost",
+            user="root",
+            password="password",
+            database="flipper"
+        )
+
+        mycursor = mydb.cursor()
+
+        mycursor.execute("SELECT asin FROM awslistings")
+
+        myresult = mycursor.fetchall()
+        mydb.close()
+        finalresult = []
+        for x in myresult:
+            finalresult.append("http://www.amazon.com/dp/{}".format(x[0]))
+
+        return finalresult
+
+    
