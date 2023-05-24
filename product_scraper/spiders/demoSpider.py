@@ -3,6 +3,7 @@ import scrapy
 from urllib.parse import urljoin
 import re
 import mysql.connector
+import requests
 
 
 
@@ -21,6 +22,10 @@ class AmazonSearchProductSpider(scrapy.Spider):
         "Sec-Fetch-Site": "none",
         "Sec-Fetch-User": "?1",
         "Cache-Control": "max-age=0",
+    }
+
+    custom_settings = {
+        'DOWNLOAD_DELAY': 1 # 2 seconds of delay
     }
 
     def start_requests(self):
@@ -57,14 +62,11 @@ class AmazonSearchProductSpider(scrapy.Spider):
                 yield scrapy.Request(url=amazon_search_url, callback=self.discover_product_urls, meta={'keyword': keyword, 'page': page_num})
 
     def parse_product_data(self, response):
-        price = response.css('.a-offscreen ::text').get("")
-        asin = response.url.split("/")[4] if self.mode == "audit" else response.url.split("/")[5]
+        asin = response.url.split("/")[4].replace("?th=1", "") if self.mode == "audit" else response.url.split("/")[5]
         name = response.css("#productTitle::text").get("").strip()
-        
+        price = response.css('.a-price span[aria-hidden="true"] ::text').get("")
         if not price:
-            price = response.css('.a-price span[aria-hidden="true"] ::text').get("")
-            if not price:
-                price = response.css('.a-offscreen')
+            price = response.css('.a-price .a-offscreen ::text').get("")
 
 
         yield {
@@ -88,6 +90,7 @@ class AmazonSearchProductSpider(scrapy.Spider):
             mycursor.execute(sql, val)
             mydb.commit()
             mydb.close()
+
         else:
             mydb = mysql.connector.connect(
                 host="localhost",
@@ -114,8 +117,10 @@ class AmazonSearchProductSpider(scrapy.Spider):
 
             print(price)
 
-            if float(priceFromDB[0][1:]) != float(price[1:]):
+            if float(priceFromDB[0][1:].replace(",", "")) > float(price[1:].replace(",", "")):
                 print("\n\n\n\n\n\n\n {} : {} \n\n\n\n\n\n\n".format(price, priceFromDB[0]))
+                self.sendMessageToDiscord(response.url + "\n Price difference: " + str(float(priceFromDB[0][1:].replace(",", "")) - float(price[1:].replace(",", ""))))
+
             
             mydb.close()
             
@@ -141,4 +146,19 @@ class AmazonSearchProductSpider(scrapy.Spider):
 
         return finalresult
 
-    
+
+    def getTestUrl(self):
+        return ["https://www.amazon.com/dp/B0BSB1T1NW?th=1"]
+
+
+    def sendMessageToDiscord(self, message):
+
+        new_data = {
+            "content" : message
+        }
+
+        # The API endpoint to communicate with
+        url_post = "https://discord.com/api/webhooks/1109646951793840158/6GdjC3ME3yvDJh8k1ou4EFHRJMwZox_She0bWxPjLyXrKEgJSd0W4yldHmkWyvNY_dPN"
+
+        # A POST request to tthe API
+        post_response = requests.post(url_post, json=new_data)
