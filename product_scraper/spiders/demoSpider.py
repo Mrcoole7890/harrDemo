@@ -65,6 +65,7 @@ class AmazonSearchProductSpider(scrapy.Spider):
         asin = response.url.split("/")[4].replace("?th=1", "") if self.mode == "audit" else response.url.split("/")[5]
         name = response.css("#productTitle::text").get("").strip()
         price = response.css('.a-price span[aria-hidden="true"] ::text').get("")
+        img = response.css('#ivLargeImage > img::attr(src)').get("")
         if not price:
             price = response.css('.a-price .a-offscreen ::text').get("")
 
@@ -119,7 +120,8 @@ class AmazonSearchProductSpider(scrapy.Spider):
 
             if float(priceFromDB[0][1:].replace(",", "")) > float(price[1:].replace(",", "")):
                 print("\n\n\n\n\n\n\n {} : {} \n\n\n\n\n\n\n".format(price, priceFromDB[0]))
-                self.sendMessageToDiscord(response.url + "\n Price difference: " + str(float(priceFromDB[0][1:].replace(",", "")) - float(price[1:].replace(",", ""))))
+                mes = [name, str(float(priceFromDB[0][1:].replace(",", "")) - float(price[1:].replace(",", ""))), response.url, img]
+                self.sendMessageToDiscord(mes)
 
             
             mydb.close()
@@ -152,9 +154,21 @@ class AmazonSearchProductSpider(scrapy.Spider):
 
 
     def sendMessageToDiscord(self, message):
-
+        
         new_data = {
-            "content" : message
+            "embeds": [
+                {
+                    "type": "rich",
+                    "title": message[0],
+                    "description": "_Price difference:_ {0} \n\n\n _Link:_ {1}".format(message[1], message[2]),
+                    "color": 65535,
+                    "thumbnail": {
+                        "url": message[3],
+                        "height": 0,
+                        "width": 0
+                    }
+                }
+            ]
         }
 
         # The API endpoint to communicate with
@@ -162,3 +176,5 @@ class AmazonSearchProductSpider(scrapy.Spider):
 
         # A POST request to tthe API
         post_response = requests.post(url_post, json=new_data)
+
+        
