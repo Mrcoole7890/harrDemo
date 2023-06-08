@@ -157,7 +157,7 @@ class AmazonSearchProductSpider(scrapy.Spider):
 
     def sendMessageToDiscord(self, message):
         # The API endpoint to communicate with
-        url_post = "https://discord.com/api/webhooks/1109646951793840158/6GdjC3ME3yvDJh8k1ou4EFHRJMwZox_She0bWxPjLyXrKEgJSd0W4yldHmkWyvNY_dPN"
+        url_post = os.getenv(webhookLink)
         new_data = {
             "embeds": [
                 {
